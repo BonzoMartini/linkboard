@@ -127,12 +127,12 @@ a.chip:hover{text-decoration:underline}
 .keys{border-top:1px solid var(--line);margin-top:4px;padding:10px 10px 6px;display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:12.5px;color:var(--muted)}
 .keys h3{grid-column:1/-1;margin:0 0 2px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg)}
 
-#dlgWrap,#ghWrap{position:fixed;inset:0;z-index:50;background:rgba(10,15,12,.35);display:grid;place-items:center;padding:16px}
-#dlg,#ghDlg{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;width:min(420px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 60px -30px var(--shadow)}
-#dlg h2,#ghDlg h2{margin:0;font-size:17px;text-wrap:balance}
-#dlg label,#ghDlg label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
-#dlg input,#ghDlg input{font:inherit;font-size:15px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-#dlg input:focus,#ghDlg input:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}
+#dlgWrap,#ghWrap,#nmWrap{position:fixed;inset:0;z-index:50;background:rgba(10,15,12,.35);display:grid;place-items:center;padding:16px}
+#dlg,#ghDlg,#nmDlg{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;width:min(420px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 60px -30px var(--shadow)}
+#dlg h2,#ghDlg,#nmDlg h2{margin:0;font-size:17px;text-wrap:balance}
+#dlg label,#ghDlg,#nmDlg label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+#dlg input,#ghDlg,#nmDlg input{font:inherit;font-size:15px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+#dlg input:focus,#ghDlg,#nmDlg input:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .row .grow{flex:1}
 .btn{border:1px solid var(--line);background:transparent;border-radius:10px;padding:9px 14px;cursor:pointer;font-weight:600;font-size:14px}
@@ -221,11 +221,18 @@ a.chip:hover{text-decoration:underline}
       <button type="button" class="btn" id="ghCancel">Cancel</button><button type="submit" class="btn primary">Save</button></div>
   </form>
 </div>
+<div id="nmWrap" hidden>
+  <form id="nmDlg" autocomplete="off">
+    <h2>Save board file</h2>
+    <label>File name<input id="nmInput" type="text" spellcheck="false"></label>
+    <div class="row"><span class="grow"></span><button type="button" class="btn" id="nmCancel">Cancel</button><button type="submit" class="btn primary">Save</button></div>
+  </form>
+</div>
 <div id="toast" hidden></div>
 
 <script>
 (()=>{
-const VERSION='1.20.0';
+const VERSION='1.21.0';
 const Q=new URLSearchParams(location.search), BOARD=Q.get('board'), VIEW=(!!BOARD&&!Q.has('edit'))||Q.has('view');
 const KEY='linkboard.v1'+(BOARD?':'+BOARD:'');
 const $=id=>document.getElementById(id);
@@ -729,18 +736,25 @@ xmenu.addEventListener('click',e=>{
   if(sc==='area'){ exportMode=fmt; stage.classList.add('picking'); toast('Drag a box around the area to export. Esc cancels.'); return; }
   exportAs(fmt,null,sc==='sel'?new Set(sel?[sel]:[...group]):null);
 });
-$('mCopy').onclick=()=>{
+const NAMEKEY=KEY+':name';
+function lastName(){ try{ return localStorage.getItem(NAMEKEY)||''; }catch{ return ''; } }
+function cleanName(n){ n=String(n||'').trim().replace(/\.json$/i,'').replace(/[\\/:*?"<>|\x00-\x1f]+/g,'-').replace(/\s+/g,' ').slice(0,80); return n||('linkboard-'+new Date().toISOString().slice(0,10)); }
+$('mCopy').onclick=()=>{ closeMenu(); $('nmInput').value=lastName()||('linkboard-'+new Date().toISOString().slice(0,10)); $('nmWrap').hidden=false; setTimeout(()=>{ $('nmInput').focus(); $('nmInput').select(); },0); };
+$('nmCancel').onclick=()=>$('nmWrap').hidden=true;
+$('nmWrap').addEventListener('pointerdown',e=>{ if(e.target===$('nmWrap')) $('nmWrap').hidden=true; });
+$('nmWrap').addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Escape') $('nmWrap').hidden=true; });
+$('nmDlg').addEventListener('submit',e=>{ e.preventDefault(); const nm=cleanName($('nmInput').value); $('nmWrap').hidden=true; try{ localStorage.setItem(NAMEKEY,nm); }catch{} saveBoardFile(nm+'.json'); });
+function saveBoardFile(fname){
   const txt=JSON.stringify({app:'linkboard',version:VERSION,items});
-  closeMenu();
-  if(STANDALONE){ blobSave('linkboard-'+new Date().toISOString().slice(0,10)+'.json',txt,'application/json'); toast('Board file saved.'); return; }
-  if(downloadsNS){ downloadsNS.save({filename:'linkboard-'+new Date().toISOString().slice(0,10)+'.json',data:txt}).then(()=>toast('Board file saved.'),e=>{ if(!e||e.code!=='declined') copyTxt(); }); return; }
+  if(STANDALONE){ blobSave(fname,txt,'application/json'); toast('Board file saved.'); return; }
+  if(downloadsNS){ downloadsNS.save({filename:fname,data:txt}).then(()=>toast('Board file saved.'),e=>{ if(!e||e.code!=='declined') copyTxt(); }); return; }
   copyTxt();
   function copyTxt(){
   try{ navigator.clipboard.writeText(txt).then(()=>toast('Board copied. Paste it into a .json file to keep a backup.'),()=>toast('This browser blocked copying.')); }catch{ toast('This browser blocked copying.'); }
   }
 };
 $('mLoad').onclick=()=>$('fileIn').click();
-$('fileIn').onchange=e=>{ const f=e.target.files[0]; if(!f) return; f.text().then(t=>{ try{ loadData(JSON.parse(t)); }catch{ toast('That file isn’t a Linkboard backup.'); } }); e.target.value=''; closeMenu(); };
+$('fileIn').onchange=e=>{ const f=e.target.files[0]; if(!f) return; try{ localStorage.setItem(NAMEKEY,cleanName(f.name)); }catch{} f.text().then(t=>{ try{ loadData(JSON.parse(t)); }catch{ toast('That file isn’t a Linkboard backup.'); } }); e.target.value=''; closeMenu(); };
 let clearArmed=false,clearT;
 function resetClear(){ clearArmed=false; clearTimeout(clearT); $('mClear').textContent='Clear board'; }
 $('mClear').onclick=()=>{
@@ -752,7 +766,7 @@ function loadData(d){ if(!d||!Array.isArray(d.items)) throw 0; items=clean(d.ite
 // ---------- keyboard ----------
 document.addEventListener('keydown',e=>{
   if(VIEW&&!['0','1','+','=','-','Escape'].includes(e.key)) return;
-  if(editing||!dlgWrap.hidden||!ghWrap.hidden||e.target.closest&&e.target.closest('input,textarea,[contenteditable="true"]')) return;
+  if(editing||!dlgWrap.hidden||!ghWrap.hidden||!$('nmWrap').hidden||e.target.closest&&e.target.closest('input,textarea,[contenteditable="true"]')) return;
   const k=e.key.toLowerCase(), mod=e.ctrlKey||e.metaKey;
   if(mod&&k==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
   if(mod&&k==='y'){ e.preventDefault(); redo(); return; }
